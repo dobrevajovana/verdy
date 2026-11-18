@@ -1,11 +1,11 @@
-"""Where the terms come from, and how a name is searched in each.
+"""The ontologies, and how a term is searched in each for candidates (ontology classes).
 
-Ontologies are chosen by ID. The ready ones are in ``ONTOLOGIES``; any other OLS4
-ontology ID works too (https://www.ebi.ac.uk/ols4/ontologies).
+Ontologies are chosen by name. The ready ones are in ``ONTOLOGIES``; any other OLS4
+ontology name works too (https://www.ebi.ac.uk/ols4/ontologies).
 
-* OLS4 ontologies (ENVO, NCBITaxon, PATO, OBA, UO, ...): OLS4's exact search on the name as
-  written, then its word searches on the name, its singular form and its key words (OLS4
-  only returns terms holding every word of a query).
+* OLS4 ontologies (ENVO, NCBITaxon, PATO, OBA, UO, ...): OLS4's exact search on the term as
+  written, then its word searches on the term, its singular form and its key words (OLS4
+  only returns classes holding every word of a query).
 * ``gbif``: the GBIF Backbone's name matcher.
 * ``wikidata``: Wikidata's item search.
 * ``natura2000``: the Natura 2000 habitat types and species of the EEA's Article 17 report
@@ -15,7 +15,7 @@ ontology ID works too (https://www.ebi.ac.uk/ols4/ontologies).
   searched locally.
 
 Every answer is cached on disk (``VERDY_CACHE``, default ``~/.cache/verdy``), so a
-second run on the same names makes no requests.
+second run on the same terms makes no requests.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ import re
 import threading
 import time
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import requests
@@ -73,16 +74,22 @@ _STOP = {"the", "and", "with", "of", "in", "on", "or", "by", "for", "to", "a", "
 # --- cache and requests ----------------------------------------------------------
 
 class Cache:
-    """One JSON file per source; a failed lookup (None) is not kept, so it is tried again."""
+    """One JSON file per source; a failed lookup (None) is not kept, so it is tried again.
+    Every Cache of one file shares its data, so threads writing at once don't lose each other's answers."""
     _locks: dict[str, threading.Lock] = {}
+    _data: dict[str, dict] = {}
 
     def __init__(self, name: str):
         self.path = CACHE / f"{name}.json"
-        self.lock = Cache._locks.setdefault(str(self.path), threading.Lock())
-        try:
-            self.data = json.loads(self.path.read_text())
-        except (OSError, ValueError):
-            self.data = {}
+        key = str(self.path)
+        self.lock = Cache._locks.setdefault(key, threading.Lock())
+        with self.lock:
+            if key not in Cache._data:
+                try:
+                    Cache._data[key] = json.loads(self.path.read_text())
+                except (OSError, ValueError):
+                    Cache._data[key] = {}
+        self.data = Cache._data[key]
 
     def get(self, key, fetch):
         if key in self.data:
@@ -90,21 +97,27 @@ class Cache:
         value = fetch()
         if value is None:
             return None
+        self.put({key: value})
+        return value
+
+    def put(self, items: dict) -> None:
+        """Keep several answers, written once."""
         with self.lock:
-            self.data[key] = value
+            self.data.update(items)
             self.path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self.path.with_name(self.path.name + f".{threading.get_ident()}.tmp")
             tmp.write_text(json.dumps(self.data))
             tmp.replace(self.path)
-        return value
 
 
-def _json(url, **params):
-    """GET JSON; {} for 404, None when the service did not answer (after two retries)."""
+def _json(url, _post=False, **params):
+    """GET (or POST, for long queries) JSON; {} for 404 or an empty answer, None when the service
+    did not answer (after two retries)."""
     for attempt in range(3):
         try:
-            r = requests.get(url, params=params, headers=UA, timeout=30)
-            if r.status_code == 404:
+            r = requests.post(url, data=params, headers=UA, timeout=300) if _post else \
+                requests.get(url, params=params, headers=UA, timeout=30)
+            if r.status_code == 404 or (r.ok and not r.content.strip()):
                 return {}
             if r.status_code in (429, 500, 502, 503, 504) and attempt < 2:
                 wait = r.headers.get("Retry-After") or ""
@@ -122,10 +135,23 @@ def _json(url, **params):
     return None
 
 
-# --- names and identifiers --------------------------------------------------------
+def counted(fn, items: list, workers: int, stage: str, progress=None) -> list:
+    """``fn`` over ``items``, ``workers`` at a time, in order; ``progress(stage, done, total)`` as each is done."""
+    out = []
+    if progress and items:
+        progress(stage, 0, len(items))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for x in pool.map(fn, items):
+            out.append(x)
+            if progress:
+                progress(stage, len(out), len(items))
+    return out
+
+
+# --- terms and identifiers --------------------------------------------------------
 
 def canon(identifier) -> str:
-    """One spelling per term, so a CURIE and a URI of the same term compare equal."""
+    """An ontology class's IRI as its ontology ID (ENVO:00001998), so both compare equal."""
     o = str(identifier or "").strip()
     if m := re.search(r"/obo/([A-Za-z][A-Za-z0-9]*)_(\w+)$", o):
         return f"{m.group(1)}:{m.group(2)}"
@@ -140,11 +166,22 @@ def canon(identifier) -> str:
     return o
 
 
+# A typed ID, an ontology ID written in a term: "soil [ENVO:00001998]", "ENVO_00002149", "marine biome ENVO: 00000447".
+ONTOLOGY_ID = re.compile(r"\b([A-Za-z][A-Za-z0-9]*)[:_]\s?(\d{4,8})\b")
+
+
+def ids_in(text) -> list[tuple[str, str]]:
+    """The ontology IDs typed in ``text``, as (prefix, number) pairs, in order and once each."""
+    return list(dict.fromkeys(ONTOLOGY_ID.findall(str(text or ""))))
+
+
 def query_text(label: str) -> str:
-    """The name as a search: without a leading code ('1330 Atlantic salt meadows'), a bracketed
-    note such as a unit ('air temperature [K]') or underscores ('air_temperature')."""
+    """The term as searched (``searched_for``): without a leading code ('1330 Atlantic salt meadows'),
+    a bracketed note such as a unit ('air temperature [K]'), a typed ID ('soil ENVO:00001998') or
+    underscores ('air_temperature')."""
     t = re.sub(r"^\d{3,}[0-9A-Z]*\s+\*?\s*(?=[A-Za-z])", "", str(label or "")).strip()
     t = re.sub(r"\s*[\(\[][^)\]]*[\)\]]", "", t)
+    t = ONTOLOGY_ID.sub(" ", t)
     t = t.replace("_", " ")
     return re.sub(r"\s+", " ", t).strip(" ,;")
 
@@ -169,10 +206,10 @@ def _norm(text) -> str:
 
 
 def score(name: str, labels: list[str]) -> tuple[float, bool, bool]:
-    """How well the best of a term's labels fits the name (word overlap, 0..1); whether one
-    has the same words (plurals and 'sp.' aside); whether one is the name as written."""
+    """How well the best of a candidate's labels fits the term ``name`` (word overlap, 0..1); whether
+    one has the same words (plurals and 'sp.' aside); whether one is the term as written."""
     nw = words(name)
-    # an abbreviation ('AIR' for a chemical) counts only when the name is written the same way
+    # an abbreviation ('AIR' for a chemical) counts only when the term is written the same way
     labels = [lab for lab in labels if lab and not (lab.isupper() and len(lab) <= 8 and lab != name.strip())]
     # each label also without a bracketed part, and a path's last step ('Environmental > Air > Outdoor Air')
     labels = list(dict.fromkeys(v for lab in labels if lab for v in (lab, query_text(lab), lab.split(">")[-1].strip()) if v))
@@ -210,6 +247,27 @@ def _queries(name: str, taxon: bool) -> list[str]:
 
 
 # --- the sources ------------------------------------------------------------------
+
+def by_id(ontology_id: str) -> dict | None:
+    """An ontology class from OLS4 by its ontology ID: {id (the IRI), curie, label, synonyms, definition};
+    {} when OLS4 does not know it, None when it did not answer. Its own ontology's entry is preferred
+    to the ontologies importing it."""
+    prefix = ontology_id.split(":", 1)[0].lower()
+
+    def fetch():
+        d = _json(f"{OLS}/terms", obo_id=ontology_id)
+        if d is None:
+            return None
+        docs = (d.get("_embedded") or {}).get("terms") or []
+        docs = [x for x in docs if x.get("ontology_name") == prefix] or docs
+        if not docs:
+            return {}
+        x, desc = docs[0], docs[0].get("description")
+        return {"id": x.get("iri"), "curie": ontology_id, "label": x.get("label") or ontology_id,
+                "synonyms": x.get("synonyms") or [],
+                "definition": (desc[0] if isinstance(desc, list) and desc else desc) or None}
+    return Cache("terms").get(ontology_id, fetch)
+
 
 def ontology_info(ontology: str) -> dict | None:
     """Title and short name of a source; None when it is neither ready nor in OLS4."""
@@ -249,18 +307,18 @@ def _ols(name: str, ontology: str, cache: Cache) -> list[dict] | None:
             break
     if failed and not docs:
         return None
-    if any(d.get("is_defining_ontology") for d in docs):          # its own terms, not imported ones;
+    if any(d.get("is_defining_ontology") for d in docs):          # its own classes, not imported ones;
         docs = [d for d in docs if d.get("is_defining_ontology")]  # (some, like GOLD, mark none as its own)
-    hits = []
+    candidates = []
     for d in docs:
         s, exact, same = score(name, [d.get("label") or "", *(d.get("synonym") or [])])
         if s > 0:
             desc = d.get("description")
-            hits.append({"id": d["iri"], "curie": canon(d["iri"]) if "gold" in d["iri"] else d.get("obo_id") or canon(d["iri"]),
-                         "label": d.get("label"), "synonyms": (d.get("synonym") or [])[:5],
-                         "score": round(s, 3), "exact": exact, "same": same,
-                         "definition": (desc[0] if isinstance(desc, list) and desc else desc) or None})
-    return hits
+            candidates.append({"id": d["iri"], "curie": canon(d["iri"]) if "gold" in d["iri"] else d.get("obo_id") or canon(d["iri"]),
+                               "label": d.get("label"), "synonyms": (d.get("synonym") or [])[:5],
+                               "score": round(s, 3), "exact": exact, "same": same,
+                               "definition": (desc[0] if isinstance(desc, list) and desc else desc) or None})
+    return candidates
 
 
 def _gbif(name: str, cache: Cache) -> list[dict] | None:
@@ -288,13 +346,13 @@ def _wikidata(name: str, cache: Cache) -> list[dict] | None:
     if d is None:
         return None
     out = []
-    for h in d.get("search") or []:
-        _, exact, same = score(name, [h.get("label") or "", *(h.get("aliases") or [])])   # an alias can make it exact,
-        s = 1.0 if exact else score(name, [h.get("label") or ""])[0]                     # only the label otherwise
+    for item in d.get("search") or []:
+        _, exact, same = score(name, [item.get("label") or "", *(item.get("aliases") or [])])   # an alias can make it exact,
+        s = 1.0 if exact else score(name, [item.get("label") or ""])[0]                        # only the label otherwise
         if s > 0:
-            out.append({"id": f"http://www.wikidata.org/entity/{h['id']}", "curie": f"wikidata:{h['id']}",
-                        "label": h.get("label"), "score": round(s, 3), "exact": exact, "same": same,
-                        "definition": h.get("description")})
+            out.append({"id": f"http://www.wikidata.org/entity/{item['id']}", "curie": f"wikidata:{item['id']}",
+                        "label": item.get("label"), "score": round(s, 3), "exact": exact, "same": same,
+                        "definition": item.get("description")})
     return out
 
 
@@ -366,38 +424,41 @@ _CODE = re.compile(r"^(?:n2k:|natura2000:)?(\d[0-9A-Z]{3})\b", re.I)
 
 def _natura(name: str, raw: str) -> list[dict]:
     terms = natura_terms()
-    hit = lambda t, s, exact, same, note=None: {
+    candidate = lambda t, s, exact, same, note=None: {
         "id": f"n2k:{t['code']}", "curie": f"n2k:{t['code']}", "label": f"{t['code']} {t['label']}" if t["category"] == "habitat" else t["label"],
         "score": round(s, 3), "exact": exact, "same": same,
         "definition": note or ("Annex I habitat type" if t["category"] == "habitat" else f"species · {t.get('group') or ''}")}
     if (m := _CODE.match(raw.strip())) and (t := next((t for t in terms if t["code"] == m.group(1).upper()
                                                        and t["category"] == "habitat"), None)):
-        return [hit(t, 1.0, True, True, "matched by its Annex I code")]
+        return [candidate(t, 1.0, True, True, "matched by its Annex I code")]
     out = []
     for t in terms:
         s, exact, same = score(name, [t["label"]])
         if s >= 0.25:
-            out.append(hit(t, s, exact, same))
+            out.append(candidate(t, s, exact, same))
     return out
 
 
 def search(name: str, ontology: str, top: int = 5) -> list[dict] | None:
-    """The ontology's best terms for ``name``, best first (exact names first, then by word
-    overlap, then in the source's own order); None if the service did not answer."""
+    """The ontology's candidates for the term ``name``, best first (exact names first, then by
+    word overlap, then in the source's own order); None if the service did not answer."""
     q = query_text(name)
     if not q:
         return []
     if ontology == "gbif":
-        hits = _gbif(q, Cache("search_gbif"))
+        candidates = _gbif(q, Cache("search_gbif"))
     elif ontology == "wikidata":
-        hits = _wikidata(q, Cache("search_wikidata"))
+        candidates = _wikidata(q, Cache("search_wikidata"))
     elif ontology == "cf":
-        hits = _cf(q)
+        candidates = _cf(q)
     elif ontology == NATURA:
-        hits = _natura(q, name)
+        candidates = _natura(q, name)
+    elif ontology == "gold":
+        from verdy import gold
+        candidates = gold.load().search(q)
     else:
-        hits = _ols(q, ontology, Cache(f"search_{ontology}"))
-    if hits is None:
+        candidates = _ols(q, ontology, Cache(f"search_{ontology}"))
+    if candidates is None:
         return None
-    hits.sort(key=lambda h: (-h["same"], -h["exact"], -h["score"]))
-    return hits[:top]
+    candidates.sort(key=lambda c: (-c["same"], -c["exact"], -c["score"]))
+    return candidates[:top]

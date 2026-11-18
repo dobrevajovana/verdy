@@ -22,9 +22,26 @@ Issues = "https://github.com/dobrevajovana/verdy/issues"
 excel = ["pandas>=2.0", "openpyxl>=3.1"]
 embeddings = ["sentence-transformers>=2.2.2"]
 test = ["pytest>=7", "numpy"]
+dev = ["verdy[test]", "pre-commit>=3.5"]
 
 [project.scripts]
 verdy = "verdy.__main__:main"
 
 [tool.setuptools]
 packages = ["verdy"]
+
+[tool.black]
+line-length = 120
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 120
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+# flake8, isort and black cover the rest; ruff adds likely bugs (B) and outdated syntax (UP).
+select = ["B", "UP"]
