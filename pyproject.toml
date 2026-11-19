@@ -37,11 +37,3 @@ target-version = ["py310"]
 [tool.isort]
 profile = "black"
 line_length = 120
-
-[tool.ruff]
-line-length = 120
-target-version = "py310"
-
-[tool.ruff.lint]
-# flake8, isort and black cover the rest; ruff adds likely bugs (B) and outdated syntax (UP).
-select = ["B", "UP"]

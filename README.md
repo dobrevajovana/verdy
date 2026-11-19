@@ -113,6 +113,8 @@ takes about half a minute; then it is cached.
 **Any other ontology in [OLS4](https://www.ebi.ac.uk/ols4/ontologies) works as well:** pass its name there
 (for example `foodon`, `pco` or `ms`).
 
+Who makes each ontology, where VERDY gets it and which version it uses: [ONTOLOGIES.md](ONTOLOGIES.md).
+
 ## What comes out
 
 One row per match:
@@ -207,7 +209,7 @@ verdy.to_dataframe(matches)                         # pandas
 pip install verdy                 # to use it: only requests
 pip install -e ".[test]"          # to run the tests: adds pytest
 pip install -e ".[dev]"           # to work on it: the tests and pre-commit
-pre-commit install                # then black, isort, flake8 and ruff check every commit
+pre-commit install                # then black, isort and flake8 check every commit
 python -m pytest -q
 pre-commit run --all-files        # every check on every file
 ```

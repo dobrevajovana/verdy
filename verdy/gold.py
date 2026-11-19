@@ -27,7 +27,8 @@ from __future__ import annotations
 import threading
 
 from verdy import hosts, sources
-from verdy.sources import OLS, Cache, by_id, canon, counted, score
+from verdy.constants import OLS
+from verdy.sources import Cache, by_id, canon, counted, score
 
 LINKS = ("env_broad", "env_local", "env_medium", "anatomical_site", "has exact match", "has close match")
 HOST = "Host-associated"

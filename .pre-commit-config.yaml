@@ -1,6 +1,6 @@
 # Checks run on every commit:  pip install -e ".[dev]" && pre-commit install
 # Run them on everything:       pre-commit run --all-files
-# Settings (line length 120, isort in black's style, flake8 and ruff rules) are in pyproject.toml and .flake8.
+# Settings (line length 120, isort in black's style, flake8 rules) are in pyproject.toml and .flake8.
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -21,8 +21,3 @@ repos:
     rev: 7.1.1
     hooks:
       - id: flake8
-  # Only what the others don't check: likely bugs (bugbear) and outdated syntax (pyupgrade).
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
-    hooks:
-      - id: ruff

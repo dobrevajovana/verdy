@@ -18,7 +18,8 @@ import re
 from urllib.parse import quote
 
 from verdy import sources
-from verdy.sources import OLS, Cache, by_id
+from verdy.constants import OLS
+from verdy.sources import Cache, by_id
 
 HOST_FIELDS = ("host_tax_id", "host_scientific_name", "host")
 

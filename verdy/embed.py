@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import os
 
-MODEL = os.environ.get("VERDY_EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+from verdy.constants import EMBEDDING_MODEL
+
+MODEL = os.environ.get("VERDY_EMBEDDING_MODEL", EMBEDDING_MODEL)
 MIN_COSINE = 0.60     # least cosine for a match kept on embedding similarity (match(min_cosine=...))
 CLOSE = 0.80          # cosine for a closeMatch
 

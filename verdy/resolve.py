@@ -19,9 +19,8 @@ from __future__ import annotations
 import re
 
 from verdy import sources
+from verdy.constants import ENA_API
 from verdy.sources import Cache, counted
-
-ENA_API = "https://www.ebi.ac.uk/ena/portal/api"
 # ENA sample fields that say what a sample is; each value is a term. ``fields=`` chooses others (see ENA's returnFields).
 SAMPLE_FIELDS = ("scientific_name", "broad_scale_environmental_context", "local_environmental_context",
                  "environmental_medium", "environment_biome", "environment_feature", "environment_material",

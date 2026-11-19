@@ -22,20 +22,46 @@ CF = b"""<?xml version="1.0"?><standard_name_table>
 </standard_name_table>"""
 
 
-# ENA's search, by result: SAMD2 is in project PRJEB1 (ERP1) but has no runs.
-ENA = {"sample": [{"sample_accession": "SAMD1", "secondary_sample_accession": "ERS1", "study_accession": "PRJEB1",
-                   "scientific_name": "air metagenome", "broad_scale_environmental_context": "urban biome",
-                   "local_environmental_context": "air", "environmental_medium": "air", "isolation_source": "missing",
-                   "sample_title": "Air over Tokyo", "description": "not provided"},
-                  {"sample_accession": "SAMD2", "secondary_sample_accession": "ERS2", "study_accession": "PRJEB1",
-                   "scientific_name": "gut metagenome", "environmental_medium": "feces", "host": "cow",
-                   "host_tax_id": "9913"},
-                  # no host, and a lab's: neither is the cow's feces
-                  {"sample_accession": "SAMD3", "scientific_name": "gut metagenome", "environmental_medium": "faeces"},
-                  {"sample_accession": "SAMD4", "scientific_name": "gut metagenome", "environmental_medium": "feces",
-                   "sample_title": "lab enrichment of feces"}],
-       "read_run": [{"run_accession": "ERR1", "experiment_accession": "ERX1", "sample_accession": "SAMD1"}],
-       "study": [{"study_accession": "PRJEB1", "secondary_study_accession": "ERP1", "study_title": "City air and cows"}]}
+# Real ENA records
+AIR, SOIL, COW, CAT, SLUDGE = "SAMEA104135898", "SAMEA104135884", "SAMN13091181", "SAMD00659239", "SAMD00444474"
+ENA = {"sample": [
+    # air and soil, both in project PRJEB21441
+    {"sample_accession": AIR, "secondary_sample_accession": "ERS1794916", "study_accession": "PRJEB21441",
+     "scientific_name": "air metagenome", "broad_scale_environmental_context": "urban biome",
+     "local_environmental_context": "city", "environmental_medium": "air", "environment_biome": "urban biome",
+     "environment_feature": "city", "environment_material": "air", "host_scientific_name": "Not applicable",
+     "sample_title": "1521.Chi.1.s.8.1.sequences", "sample_description": "air sample Chi.1",
+     "description": "air sample Chi.1"},
+    {"sample_accession": SOIL, "secondary_sample_accession": "ERS1794902", "study_accession": "PRJEB21441",
+     "scientific_name": "soil metagenome", "broad_scale_environmental_context": "forest biome",
+     "local_environmental_context": "forest", "environmental_medium": "soil", "environment_biome": "forest biome",
+     "environment_feature": "forest", "environment_material": "soil", "host_scientific_name": "Not applicable",
+     "sample_title": "1521.CF3.s.6.1.sequences", "sample_description": "soil sample CF3",
+     "description": "soil sample CF3"},
+    # cow feces, the host by its taxon ID
+    {"sample_accession": COW, "secondary_sample_accession": "SRS5634417", "study_accession": "PRJNA579572",
+     "scientific_name": "gut metagenome", "isolation_source": "Cow feces", "host": "Bos taurus",
+     "host_scientific_name": "Bos taurus", "host_tax_id": "9913",
+     "sample_title": "Metagenome or environmental sample from gut metagenome",
+     "sample_description": "Metagenome or environmental sample from gut metagenome",
+     "description": "Metagenome or environmental sample from gut metagenome"},
+    # feces with no host given (only the title names the cat)
+    {"sample_accession": CAT, "secondary_sample_accession": "DRS362558", "study_accession": "PRJDB17088",
+     "scientific_name": "feces metagenome", "broad_scale_environmental_context": "subtropical forests",
+     "environmental_medium": "feces", "environment_biome": "subtropical forests", "environment_material": "feces",
+     "sample_title": "Iriomote cat fecal sample in summer 10", "sample_description": "Keywords: GSC:MIxS MIMS:6.0",
+     "description": "Keywords: GSC:MIxS MIMS:6.0"},
+    # lab-scale activated sludge; the organism is a worm living in it
+    {"sample_accession": SLUDGE, "secondary_sample_accession": "DRS229742", "study_accession": "PRJDB13106",
+     "scientific_name": "Monopylephorus rubroniveus", "broad_scale_environmental_context": "activated sludge",
+     "local_environmental_context": "lab-scale activated sludge at Ritumeikan University",
+     "environmental_medium": "water", "environment_biome": "activated sludge",
+     "environment_feature": "lab-scale activated sludge at Ritumeikan University", "environment_material": "water",
+     "sample_title": "Monopylephorus rubroniveus WR", "sample_description": "Keywords: GSC:MIxS MIGS:6.0",
+     "description": "Keywords: GSC:MIxS MIGS:6.0"}],
+    "read_run": [{"run_accession": "ERR2012938", "experiment_accession": "ERX2072610", "sample_accession": AIR}],
+    "study": [{"study_accession": "PRJEB21441", "secondary_study_accession": "ERP023684",
+               "study_title": "Samples presented at EMP conference June 2011 Shenzhen"}]}
 
 TERMS = {"ENVO:00001998": {"iri": ENVO + "00001998", "label": "soil", "ontology_name": "envo", "synonyms": []},
          "ENVO:01000024": {"iri": ENVO + "01000024", "label": "marine benthic biome", "ontology_name": "envo"},
@@ -46,7 +72,8 @@ UBERON = "http://purl.obolibrary.org/obo/UBERON_"
 TERMS.update({"UBERON:0001988": {"iri": UBERON + "0001988", "label": "feces", "ontology_name": "uberon",
                                  "synonyms": ["faeces", "stool", "dung"]},
               "UBERON:0000059": {"iri": UBERON + "0000059", "label": "large intestine", "ontology_name": "uberon"},
-              "ENVO:00002005": {"iri": ENVO + "00002005", "label": "air", "ontology_name": "envo"}})
+              "ENVO:00002005": {"iri": ENVO + "00002005", "label": "air", "ontology_name": "envo"},
+              "ENVO:00002046": {"iri": ENVO + "00002046", "label": "activated sludge", "ontology_name": "envo"}})
 # OLS4's GOLD: paths with their links (as OLS4 gives them, full IRIs); Fish states one class, Algae none.
 _P = "https://w3id.org/gold.path/"
 GOLD = [(_P + "1", "Host-associated", {}),
@@ -62,12 +89,15 @@ GOLD = [(_P + "1", "Host-associated", {}),
         (_P + "12", "Host-associated > Birds > Digestive system > Fecal",
          {"host_taxon": [TAXON + "8782"], "env_medium": [UBERON + "0001988"]}),
         (_P + "8", "Engineered > Lab enrichment > Feces", {"env_medium": [UBERON + "0001988"]}),
+        (_P + "13", "Engineered > Wastewater", {}),
+        (_P + "14", "Engineered > Wastewater > Activated Sludge", {"env_medium": [ENVO + "00002046"]}),
         (_P + "9", "Environmental > Air", {"env_medium": [ENVO + "00002005"]}),
         (_P + "10", "Environmental > Air > Outdoor Air", {"env_medium": [ENVO + "00002005"]}),
         ("https://w3id.org/gold.vocab/Air", "Air", {})]
 ANCESTORS = {TAXON + "9913": [("NCBITaxon:9903", "Bos"), ("NCBITaxon:9895", "Bovidae"), ("NCBITaxon:40674", "Mammalia"),
                               ("NCBITaxon:32525", "Theria <mammals>"), ("NCBITaxon:33208", "Metazoa"),
-                              ("NCBITaxon:2759", "Eukaryota")]}
+                              ("NCBITaxon:2759", "Eukaryota")],
+             ENVO + "00002046": [("ENVO:00002044", "sludge"), ("ENVO:0010001", "anthropogenic environmental material")]}
 
 
 @pytest.fixture
@@ -86,6 +116,10 @@ def services(monkeypatch, tmp_path):
            ("ncbitaxon", "lynx lynx"): [{"iri": TAXON + "13125", "label": "Lynx lynx", "obo_id": "NCBITaxon:13125"}],
            ("ncbitaxon", "cow"): [{"iri": TAXON + "9913", "label": "Bos taurus", "obo_id": "NCBITaxon:9913",
                                    "synonym": ["cow"]}],
+           ("ncbitaxon", "bos taurus"): [{"iri": TAXON + "9913", "label": "Bos taurus", "obo_id": "NCBITaxon:9913",
+                                          "synonym": ["cow"]}],
+           ("envo", "activated sludge"): [{"iri": ENVO + "00002046", "label": "activated sludge",
+                                           "obo_id": "ENVO:00002046", "is_defining_ontology": True}],
            ("ncbitaxon", "mammals"): [{"iri": TAXON + "40674", "label": "Mammalia", "obo_id": "NCBITaxon:40674"}],
            ("ncbitaxon", "fish"): [{"iri": TAXON + "7777", "label": "Chondrichthyes", "obo_id": "NCBITaxon:7777"},
                                    {"iri": TAXON + "7898", "label": "Actinopterygii", "obo_id": "NCBITaxon:7898"}],
@@ -229,38 +263,46 @@ def test_command_line(services, tmp_path, capsys):
 def test_ids_are_looked_up_in_ena_and_the_ontologies(services):
     import importlib
     r = importlib.import_module("verdy.resolve")
-    assert [r.kind(x) for x in ("SAMD1", "ERS1", "ERR1", "PRJEB1", "ENVO:00000045", "air")] == \
+    assert [r.kind(x) for x in (AIR, "ERS1794916", "ERR2012938", "PRJEB21441", "ENVO:00000045", "air")] == \
         ["sample", "sample", "run", "project", "name", "name"]
-    assert r.resolve("SAMD1") == [("scientific_name", "air metagenome"), ("broad_scale_environmental_context", "urban biome"),
-                                  ("local_environmental_context", "air"), ("environmental_medium", "air")]    # 'missing' left out
-    assert r.resolve("ERR1") == r.resolve("SAMD1")
+    assert r.resolve(AIR) == [("scientific_name", "air metagenome"), ("broad_scale_environmental_context", "urban biome"),
+                              ("local_environmental_context", "city"), ("environmental_medium", "air"),
+                              ("environment_biome", "urban biome"), ("environment_feature", "city"),
+                              ("environment_material", "air")]                          # 'Not applicable' left out
+    assert r.resolve("ERR2012938") == r.resolve(AIR)
     assert r.resolve("air temperature") == [("name", "air temperature")]
     assert r.resolve("SAMD999") == []
 
 
 def test_ena_is_asked_in_bulk_with_the_sample_context(services):
-    found = verdy.samples(["SAMD1", "ERS2", "SAMD999", "ERR1", "ERP1", "Estuaries"])
+    found = verdy.samples([AIR, "SRS5634417", "SAMD999", "ERR2012938", "ERP023684", "Estuaries"])
     ena = [c for c in services if "/portal/api/" in c]
     assert len(ena) == 4            # samples and runs' samples in one; runs in one; studies in one; the project in one
     assert found["SAMD999"] == [] and "Estuaries" not in found
-    assert found["SAMD1"][0]["context"] == {"sample_title": "Air over Tokyo"}            # 'not provided' left out
-    assert found["ERS2"][0]["values"] == [("scientific_name", "gut metagenome"), ("environmental_medium", "feces"),
-                                          ("host", "cow")]
-    assert found["ERR1"][0]["sample"] == "SAMD1"
-    project = {r["sample"]: r for r in found["ERP1"]}                  # ERP1 is PRJEB1; SAMD2 has no runs
-    assert set(project) == {"SAMD1", "SAMD2"}
-    assert project["SAMD2"]["context"] == {"host_tax_id": "9913", "study": "PRJEB1", "study_title": "City air and cows"}
+    assert found[AIR][0]["context"] == {"sample_title": "1521.Chi.1.s.8.1.sequences",
+                                        "sample_description": "air sample Chi.1", "description": "air sample Chi.1"}
+    cow = found["SRS5634417"][0]                                       # by its secondary accession
+    assert cow["sample"] == COW
+    assert cow["values"] == [("scientific_name", "gut metagenome"), ("isolation_source", "Cow feces"),
+                             ("host", "Bos taurus"), ("host_scientific_name", "Bos taurus")]
+    assert cow["context"]["host_tax_id"] == "9913"
+    assert found["ERR2012938"][0]["sample"] == AIR
+    project = {r["sample"]: r for r in found["ERP023684"]}             # ERP023684 is PRJEB21441; SOIL has no runs
+    assert set(project) == {AIR, SOIL}
+    assert project[SOIL]["context"] == {"sample_title": "1521.CF3.s.6.1.sequences", "sample_description": "soil sample CF3",
+                                        "description": "soil sample CF3", "study": "PRJEB21441",
+                                        "study_title": "Samples presented at EMP conference June 2011 Shenzhen"}
 
     n = len(services)
-    verdy.samples(["SAMD1", "ERS2", "SAMD999", "ERR1", "ERP1"])
+    verdy.samples([AIR, "SRS5634417", "SAMD999", "ERR2012938", "ERP023684"])
     assert len(services) == n                                          # all cached, the unknown sample too
-    verdy.samples(["SAMD1"], fields=["scientific_name", "sample_title"])
+    verdy.samples([AIR], fields=["scientific_name", "sample_title"])
     assert len(services) == n + 1                                      # other fields: asked again
-    assert verdy.samples(["SAMD1"], fields=["sample_title"])["SAMD1"][0]["values"] == [("sample_title", "Air over Tokyo")]
+    assert verdy.samples([AIR], fields=["sample_title"])[AIR][0]["values"] == [("sample_title", "1521.Chi.1.s.8.1.sequences")]
 
-    terms, unresolved = verdy.resolve_terms([{"id": "x", "label": "PRJEB1"}, {"id": "y", "label": "SAMD999"}])
-    feces = next(t for t in terms if t["label"] == "feces")
-    assert (feces["id"], feces["input"], feces["context"]["host_tax_id"]) == ("SAMD2", "PRJEB1", "9913")
+    terms, unresolved = verdy.resolve_terms([{"id": "x", "label": "PRJEB21441"}, {"id": "y", "label": "SAMD999"}])
+    soil = next(t for t in terms if t["label"] == "soil")
+    assert (soil["id"], soil["input"], soil["context"]["study"]) == (SOIL, "PRJEB21441", "PRJEB21441")
     assert unresolved == ["SAMD999"]
 
 
@@ -277,10 +319,10 @@ def test_hosts_are_ncbitaxon_classes_from_ols4(services):
     assert len(services) == n                                                        # cached, the miss too
     assert not any("ena/taxonomy" in c or "ncbi.nlm" in c for c in services)         # OLS4 only
 
-    terms, _ = verdy.resolve_terms([{"id": "x", "label": "PRJEB1"}])
-    feces = next(t for t in terms if t["label"] == "feces")
+    terms, _ = verdy.resolve_terms([{"id": "x", "label": COW}, {"id": "y", "label": "PRJEB21441"}])
+    feces = next(t for t in terms if t["label"] == "Cow feces")
     assert feces["context"]["host_taxon"]["label"] == "Bos taurus"
-    assert not any("host_taxon" in t["context"] for t in terms if t["id"] == "SAMD1")   # no host given
+    assert not any("host_taxon" in t["context"] for t in terms if t["id"] == AIR)      # 'Not applicable': no host
 
 
 def test_gold_levels_are_named_by_what_gold_links_them_to(services):
@@ -313,46 +355,48 @@ def test_gold_paths_know_their_host(services):
 
 
 def test_one_gold_path_and_one_envo_class_per_sample(services):
-    verdy.match(["SAMD2", "SAMD3", "SAMD4", "Estuaries"], ["gold", "envo", "ncbitaxon"])
+    verdy.match([COW, CAT, SLUDGE, "Estuaries"], ["gold", "envo", "ncbitaxon"])
     rows = {s["sample"]: s for s in verdy.match.samples}
-    assert set(rows) == {"SAMD2", "SAMD3", "SAMD4"}                         # samples only, not free text
-    cow = rows["SAMD2"]                                                     # cow + feces: the mammals' Fecal
+    assert set(rows) == {COW, CAT, SLUDGE}                                  # samples only, not free text
+    cow = rows[COW]                                                         # cow + feces: the mammals' Fecal
     assert cow["host"] == "Bos taurus"
     gold_, envo = cow["matches"]["gold"], cow["matches"]["envo"]
     assert gold_["match_label"] == "Host-associated > Mammals > Digestive system > Large intestine > Fecal"
     assert gold_["method"] == "ontology name" and gold_["match_type"] == "skos:closeMatch"
     assert (envo["match_curie"], envo["method"]) == ("UBERON:0001988", "GOLD medium")
     assert cow["matches"]["ncbitaxon"]["match_label"] == "Bos taurus"      # another ontology: its best match
-    nohost = rows["SAMD3"]["matches"]["gold"]                               # feces, no host: what the hosts share
+    nohost = rows[CAT]["matches"]["gold"]                                   # feces, no host: what the hosts share
     assert (nohost["match_label"], nohost["match_type"], nohost["method"]) == \
         ("Host-associated", "skos:broadMatch", "shared parent")
-    assert rows["SAMD4"]["matches"]["gold"]["match_label"] == "Engineered > Lab enrichment > Feces"   # its title says so
+    sludge = rows[SLUDGE]["matches"]                                        # ENVO places activated sludge under anthropogenic
+    assert sludge["gold"]["match_label"] == "Engineered > Wastewater > Activated Sludge"
+    assert sludge["envo"]["match_curie"] == "ENVO:00002046"
 
     table = {r["sample"]: r for r in verdy.sample_rows(verdy.match.samples)}    # one row each, side by side
-    assert (table["SAMD2"]["gold_id"], table["SAMD2"]["envo_id"], table["SAMD2"]["status"]) == \
+    assert (table[COW]["gold_id"], table[COW]["envo_id"], table[COW]["status"]) == \
         ("GOLD.path:4", "UBERON:0001988", "matched")
-    assert table["SAMD3"]["envo_id"] == "UBERON:0001988"           # the tied Fecal paths agree on the medium
-    assert table["SAMD3"]["status"] == "no match in ncbitaxon"
+    assert table[CAT]["envo_id"] == "UBERON:0001988"               # the tied Fecal paths agree on the medium
+    assert table[CAT]["status"] == "no match in ncbitaxon"
 
 
 def test_ids_in_predictions_out(services, tmp_path):
-    (tmp_path / "ids.csv").write_text("sample_accession\nSAMD1\nEstuaries\nPRJEB1\nSAMD999\n")
+    (tmp_path / "ids.csv").write_text(f"sample_accession\n{AIR}\nEstuaries\nPRJEB21441\nSAMD999\n")
     ms = verdy.match(tmp_path / "ids.csv", ["envo", "gold", "natura2000"])
     rows = {(m["term_id"], m["term"], m["ontology"], m["match_curie"] or m["match_id"]): m for m in ms}
-    air = rows[("SAMD1", "air", "ENVO", "ENVO:00002005")]
-    assert air["category"] == "local_environmental_context|environmental_medium" and air["match_type"] == "skos:exactMatch"
-    assert ("SAMD1", "urban biome", "ENVO", "ENVO:01000249") in rows
-    assert any(k[0] == "SAMD1" and k[2] == "GOLD" and "Air" in rows[k]["match_label"] for k in rows)   # GOLD kept
+    air = rows[(AIR, "air", "ENVO", "ENVO:00002005")]
+    assert air["category"] == "environmental_medium|environment_material" and air["match_type"] == "skos:exactMatch"
+    assert (AIR, "urban biome", "ENVO", "ENVO:01000249") in rows
+    assert any(k[0] == AIR and k[2] == "GOLD" and "Air" in rows[k]["match_label"] for k in rows)   # GOLD kept
     assert rows[("estuaries", "Estuaries", "Natura2000", "n2k:1130")]["match_type"] == "skos:exactMatch"
     assert verdy.match.unresolved == ["SAMD999"]
-    assert not any(m["term_id"] == "PRJEB1" for m in ms)            # a project's rows carry its samples' IDs
+    assert not any(m["term_id"] == "PRJEB21441" for m in ms)        # a project's rows carry its samples' IDs
 
 
 def test_free_text_and_ena_ids_together(services):
-    ms = verdy.match(["SAMD1", "Estuaries"], ["envo"])
-    assert {(m["term_id"], m["term"]) for m in ms} >= {("SAMD1", "air"), ("SAMD1", "urban biome"), ("estuaries", "Estuaries")}
+    ms = verdy.match([AIR, "Estuaries"], ["envo"])
+    assert {(m["term_id"], m["term"]) for m in ms} >= {(AIR, "air"), (AIR, "urban biome"), ("estuaries", "Estuaries")}
     sssom = verdy.to_sssom(ms)
-    assert "biosample:SAMD1\t" in sssom and "term:estuaries" in sssom
+    assert f"biosample:{AIR}\t" in sssom and "term:estuaries" in sssom
 
 
 def test_embeddings_rank_by_cosine(services, monkeypatch):

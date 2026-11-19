@@ -32,12 +32,12 @@ from pathlib import Path
 
 import requests
 
+from verdy.constants import ART17, CF_TABLE, GBIF_MATCH, OLS, WIKIDATA_API
+
 logger = logging.getLogger("verdy")
 
 CACHE = Path(os.environ.get("VERDY_CACHE", Path.home() / ".cache" / "verdy"))
 UA = {"User-Agent": "verdy/0.1 (ontology matcher)"}
-OLS = "https://www.ebi.ac.uk/ols4/api"
-CF_TABLE = "https://cfconventions.org/Data/cf-standard-names/current/src/cf-standard-name-table.xml"
 
 ONTOLOGIES = {
     # environments, habitats, samples
@@ -62,7 +62,6 @@ ONTOLOGIES = {
     "wikidata": "Wikidata",
 }
 NATURA = "natura2000"
-ART17 = "https://bio.discomap.eea.europa.eu/arcgis/rest/services/Article17/ART17_2019_2024_public/MapServer"
 SHORT = {NATURA: "Natura2000", "gbif": "GBIF", "wikidata": "Wikidata", "ncbitaxon": "NCBITaxon", "cf": "CF"}
 TAXONOMIES = {"ncbitaxon", "gbif"}      # a near name there is another taxon: exact matches only
 LOCAL = {"gbif", "wikidata", "cf", NATURA}
@@ -323,7 +322,7 @@ def _ols(name: str, ontology: str, cache: Cache) -> list[dict] | None:
 
 def _gbif(name: str, cache: Cache) -> list[dict] | None:
     name = re.sub(r"\b(spp?|cf|aff)\.?(\s|$)", " ", name).strip()     # GBIF reads 'Elphidium sp.' as the genus
-    d = cache.get(name.lower(), lambda: _json("https://api.gbif.org/v1/species/match", name=name, verbose="true"))
+    d = cache.get(name.lower(), lambda: _json(GBIF_MATCH, name=name, verbose="true"))
     if d is None:
         return None
     out = []
@@ -341,7 +340,7 @@ def _gbif(name: str, cache: Cache) -> list[dict] | None:
 
 def _wikidata(name: str, cache: Cache) -> list[dict] | None:
     d = cache.get(name.lower(), lambda: _json(
-        "https://www.wikidata.org/w/api.php", action="wbsearchentities", search=name, language="en", limit=7,
+        WIKIDATA_API, action="wbsearchentities", search=name, language="en", limit=7,
         format="json", type="item"))
     if d is None:
         return None

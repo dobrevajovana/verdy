@@ -31,7 +31,8 @@ from urllib.parse import quote
 
 from verdy import gold as gold_model
 from verdy import hosts, sources
-from verdy.sources import OLS, Cache, by_id, counted, query_text, search, singular
+from verdy.constants import ECOLOGICAL, OBO, OLS
+from verdy.sources import Cache, by_id, counted, query_text, search, singular
 
 HOST, ENGINEERED, ENVIRONMENTAL = "Host-associated", "Engineered", "Environmental"
 STRONG, MATERIAL, WEAK = 1.0, 1.5, 0.5         # the sample's words; what was sampled; its study's title
@@ -67,7 +68,7 @@ def _top(items, key):
 
 def _anthropogenic(ontology_id: str) -> bool | None:
     """Whether ENVO places the class under an anthropogenic one (activated sludge: yes; sea water: no)."""
-    iri = "http://purl.obolibrary.org/obo/" + ontology_id.replace(":", "_")
+    iri = OBO + ontology_id.replace(":", "_")
 
     def fetch():
         d = sources._json(f"{OLS}/ontologies/envo/terms/{quote(quote(iri, safe=''), safe='')}/hierarchicalAncestors",
@@ -287,7 +288,6 @@ def best_envo(envo: list[dict], host_hit: dict | None, g: dict | None, chooser: 
     return None
 
 
-ECOLOGICAL = "NCBITaxon:410657"     # ecological metagenomes (soil, seawater, air); organismal ones are 410656
 
 
 def _free_living(organism: str | None) -> bool:
