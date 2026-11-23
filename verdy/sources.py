@@ -29,10 +29,11 @@ import time
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from urllib.parse import quote
 
 import requests
 
-from verdy.constants import ART17, CF_TABLE, GBIF_MATCH, OLS, WIKIDATA_API
+from verdy.constants import ART17, CF_TABLE, ENA_API, GBIF_MATCH, OLS, WIKIDATA_API
 
 logger = logging.getLogger("verdy")
 
@@ -132,6 +133,84 @@ def _json(url, _post=False, **params):
             logger.warning("Lookup failed for %s: %s", url, exc)
             return None
     return None
+
+
+# --- the requests: every web request verdy makes, one function each ----------------
+# Each takes plain arguments and returns plain data, or None when the service did not answer.
+# Everything else in verdy asks through these, so the tests replace them and nothing else.
+
+def ena_search(result: str, fields, keys, accessions) -> list[dict] | None:
+    """ENA Portal API: the ``result`` records (sample, read_run, study) whose ``keys`` hold any of ``accessions``,
+    with ``fields``. One query names them all:
+    'sample_accession="SAMN1" OR secondary_sample_accession="SAMN1" OR ...'."""
+    query = " OR ".join(f'{k}="{a}"' for a in accessions for k in keys)
+    d = _json(f"{ENA_API}/search", _post=True, result=result, format="json", limit=0,
+              fields=",".join(fields), query=query)
+    return d if d is None else (d if isinstance(d, list) else [])
+
+
+def ols_terms(obo_id: str) -> list[dict] | None:
+    """OLS4's entries for an ontology ID: one for each ontology that holds the class."""
+    d = _json(f"{OLS}/terms", obo_id=obo_id)
+    return d if d is None else (d.get("_embedded") or {}).get("terms") or []
+
+
+def ols_ancestors(ontology: str, iri: str) -> list[dict] | None:
+    """[{id, label}] of every class above ``iri`` in ``ontology``, unordered."""
+    path = quote(quote(iri, safe=""), safe="")      # OLS4 refuses an encoded "/" in an address: encode it twice
+    d = _json(f"{OLS}/ontologies/{ontology}/terms/{path}/hierarchicalAncestors", size=500)
+    return d if d is None else [{"id": t.get("obo_id"), "label": t.get("label") or ""}
+                                for t in (d.get("_embedded") or {}).get("terms") or []]
+
+
+def ols_search(q: str, ontology: str, exact: bool, fields: str, **options) -> list[dict] | None:
+    """OLS4's search in one ontology: up to 10 classes, with ``fields``."""
+    d = _json(f"{OLS}/search", q=q, ontology=ontology, exact=str(exact).lower(), rows=10, fieldList=fields, **options)
+    return d if d is None else (d.get("response") or {}).get("docs") or []
+
+
+def ols_ontology(name: str) -> dict | None:
+    """OLS4's settings of an ontology (title, preferredPrefix, ...); {} when OLS4 does not have it."""
+    d = _json(f"{OLS}/ontologies/{name}")
+    return d if d is None else d.get("config") or {}
+
+
+def ols_all_terms(ontology: str) -> list[dict] | None:
+    """Every class of an OLS4 ontology, 500 to a request."""
+    out, page = [], 0
+    while True:
+        d = _json(f"{OLS}/ontologies/{ontology}/terms", size=500, page=page)
+        if d is None:
+            return None
+        out += (d.get("_embedded") or {}).get("terms") or []
+        page += 1
+        if page >= ((d.get("page") or {}).get("totalPages") or 0):
+            return out
+
+
+def gbif_match(name: str) -> dict | None:
+    """GBIF's best match for a name, with its alternatives."""
+    return _json(GBIF_MATCH, name=name, verbose="true")
+
+
+def wikidata_search(name: str) -> list[dict] | None:
+    """Wikidata's items for a name: up to 7, with their labels, aliases and descriptions."""
+    d = _json(WIKIDATA_API, action="wbsearchentities", search=name, language="en", limit=7, format="json", type="item")
+    return d if d is None else d.get("search") or []
+
+
+def natura2000_layer(layer: int, fields: list[str]) -> list[dict] | None:
+    """The distinct ``fields`` rows of one layer of the EEA's Article 17 service."""
+    d = _json(f"{ART17}/{layer}/query", where="1=1", outFields=",".join(fields), returnDistinctValues="true",
+              returnGeometry="false", f="json")
+    return None if d is None or "features" not in d else [f["attributes"] for f in d["features"]]
+
+
+def cf_table() -> bytes:
+    """The CF Standard Names table, as XML."""
+    r = requests.get(CF_TABLE, headers=UA, timeout=60)
+    r.raise_for_status()
+    return r.content
 
 
 def counted(fn, items: list, workers: int, stage: str, progress=None) -> list:
@@ -254,10 +333,9 @@ def by_id(ontology_id: str) -> dict | None:
     prefix = ontology_id.split(":", 1)[0].lower()
 
     def fetch():
-        d = _json(f"{OLS}/terms", obo_id=ontology_id)
-        if d is None:
+        docs = ols_terms(ontology_id)
+        if docs is None:
             return None
-        docs = (d.get("_embedded") or {}).get("terms") or []
         docs = [x for x in docs if x.get("ontology_name") == prefix] or docs
         if not docs:
             return {}
@@ -277,9 +355,8 @@ def ontology_info(ontology: str) -> dict | None:
         return None
 
     def fetch():
-        d = _json(f"{OLS}/ontologies/{o}")
-        return d if not d else {"title": (d.get("config") or {}).get("title"),
-                                "prefix": (d.get("config") or {}).get("preferredPrefix")}
+        config = ols_ontology(o)
+        return config if not config else {"title": config.get("title"), "prefix": config.get("preferredPrefix")}
 
     d = Cache("ols_ontologies").get(o, fetch)
     if not d:
@@ -291,13 +368,12 @@ def _ols(name: str, ontology: str, cache: Cache) -> list[dict] | None:
     taxon = ontology == "ncbitaxon"
     docs, seen, failed = [], set(), False
     for exact, q in [(True, name)] + [(False, q) for q in _queries(name, taxon)]:
-        res = cache.get(f"{ontology}|{'=' if exact else ''}{q.lower()}", lambda q=q, exact=exact: _json(
-            f"{OLS}/search", q=q, ontology=ontology, type="class", rows=10, exact=str(exact).lower(),
-            fieldList="iri,label,obo_id,synonym,description,is_defining_ontology,is_obsolete"))
+        res = cache.get(f"{ontology}|{'=' if exact else ''}{q.lower()}", lambda q=q, exact=exact: ols_search(
+            q, ontology, exact, "iri,label,obo_id,synonym,description,is_defining_ontology,is_obsolete", type="class"))
         if res is None:
             failed = True
             continue
-        for d in (res.get("response") or {}).get("docs") or []:
+        for d in res:
             if d.get("iri") in seen or d.get("is_obsolete"):
                 continue
             seen.add(d["iri"])
@@ -322,7 +398,7 @@ def _ols(name: str, ontology: str, cache: Cache) -> list[dict] | None:
 
 def _gbif(name: str, cache: Cache) -> list[dict] | None:
     name = re.sub(r"\b(spp?|cf|aff)\.?(\s|$)", " ", name).strip()     # GBIF reads 'Elphidium sp.' as the genus
-    d = cache.get(name.lower(), lambda: _json(GBIF_MATCH, name=name, verbose="true"))
+    d = cache.get(name.lower(), lambda: gbif_match(name))
     if d is None:
         return None
     out = []
@@ -339,13 +415,11 @@ def _gbif(name: str, cache: Cache) -> list[dict] | None:
 
 
 def _wikidata(name: str, cache: Cache) -> list[dict] | None:
-    d = cache.get(name.lower(), lambda: _json(
-        WIKIDATA_API, action="wbsearchentities", search=name, language="en", limit=7,
-        format="json", type="item"))
-    if d is None:
+    items = cache.get(name.lower(), lambda: wikidata_search(name))
+    if items is None:
         return None
     out = []
-    for item in d.get("search") or []:
+    for item in items:
         _, exact, same = score(name, [item.get("label") or "", *(item.get("aliases") or [])])   # an alias can make it exact,
         s = 1.0 if exact else score(name, [item.get("label") or ""])[0]                        # only the label otherwise
         if s > 0:
@@ -356,30 +430,36 @@ def _wikidata(name: str, cache: Cache) -> list[dict] | None:
 
 
 _cf_terms: list[dict] | None = None
+_cf_lock = threading.Lock()
 
 
 def cf_terms() -> list[dict]:
-    """The CF Standard Names table: name, its words as a label, units, description; aliases included."""
+    """The CF Standard Names table: name, its words as a label, units, description; aliases included.
+    Read once, by one thread: another would find the file already there but not yet written."""
     global _cf_terms
-    if _cf_terms is None:
-        path = CACHE / "cf-standard-name-table.xml"
-        if not path.exists():
-            r = requests.get(CF_TABLE, headers=UA, timeout=60)
-            r.raise_for_status()
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(r.content)
-        root = ET.fromstring(path.read_bytes())
-        terms = {}
-        for e in root.iter("entry"):
-            sid = e.get("id")
-            terms[sid] = {"id": sid, "labels": [sid.replace("_", " ")], "units": (e.findtext("canonical_units") or "").strip(),
-                          "description": re.sub(r"\s+", " ", e.findtext("description") or "").strip()}
-        for a in root.iter("alias"):
-            target = (a.findtext("entry_id") or "").strip()
-            if target in terms:
-                terms[target]["labels"].append(a.get("id").replace("_", " "))
-        _cf_terms = list(terms.values())
+    with _cf_lock:
+        if _cf_terms is None:
+            _cf_terms = _read_cf()
     return _cf_terms
+
+
+def _read_cf() -> list[dict]:
+    path = CACHE / "cf-standard-name-table.xml"
+    if not path.exists():
+        content = cf_table()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    root = ET.fromstring(path.read_bytes())
+    terms = {}
+    for e in root.iter("entry"):
+        sid = e.get("id")
+        terms[sid] = {"id": sid, "labels": [sid.replace("_", " ")], "units": (e.findtext("canonical_units") or "").strip(),
+                      "description": re.sub(r"\s+", " ", e.findtext("description") or "").strip()}
+    for a in root.iter("alias"):
+        target = (a.findtext("entry_id") or "").strip()
+        if target in terms:
+            terms[target]["labels"].append(a.get("id").replace("_", " "))
+    return list(terms.values())
 
 
 def _cf(name: str) -> list[dict]:
@@ -395,15 +475,10 @@ def _cf(name: str) -> list[dict]:
 
 def natura_terms() -> list[dict]:
     """Natura 2000 habitat types and species, with codes, from the Article 17 layers (cached)."""
-    def fetch(layer, fields):
-        d = _json(f"{ART17}/{layer}/query", where="1=1", outFields=",".join(fields), returnDistinctValues="true",
-                  returnGeometry="false", f="json")
-        return None if d is None or "features" not in d else [f["attributes"] for f in d["features"]]
-
     def build():
-        hab = fetch(5, ["reference_habitatlist.habitat_code", "reference_habitatlist.label"])
-        spe = fetch(6, ["reference_specieslist.species_code", "reference_specieslist.species_name",
-                        "reference_specieslist.taxonomical_group"])
+        hab = natura2000_layer(5, ["reference_habitatlist.habitat_code", "reference_habitatlist.label"])
+        spe = natura2000_layer(6, ["reference_specieslist.species_code", "reference_specieslist.species_name",
+                                   "reference_specieslist.taxonomical_group"])
         if hab is None or spe is None:
             return None
         out = [{"code": a["reference_habitatlist.habitat_code"], "label": a["reference_habitatlist.label"],
@@ -447,7 +522,7 @@ def search(name: str, ontology: str, top: int = 5) -> list[dict] | None:
     if ontology == "gbif":
         candidates = _gbif(q, Cache("search_gbif"))
     elif ontology == "wikidata":
-        candidates = _wikidata(q, Cache("search_wikidata"))
+        candidates = _wikidata(q, Cache("wikidata_search"))
     elif ontology == "cf":
         candidates = _cf(q)
     elif ontology == NATURA:
@@ -456,7 +531,7 @@ def search(name: str, ontology: str, top: int = 5) -> list[dict] | None:
         from verdy import gold
         candidates = gold.load().search(q)
     else:
-        candidates = _ols(q, ontology, Cache(f"search_{ontology}"))
+        candidates = _ols(q, ontology, Cache(f"ols_search_{ontology}"))
     if candidates is None:
         return None
     candidates.sort(key=lambda c: (-c["same"], -c["exact"], -c["score"]))

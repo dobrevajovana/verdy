@@ -19,7 +19,6 @@ from __future__ import annotations
 import re
 
 from verdy import sources
-from verdy.constants import ENA_API
 from verdy.sources import Cache, counted
 # ENA sample fields that say what a sample is; each value is a term. ``fields=`` chooses others (see ENA's returnFields).
 SAMPLE_FIELDS = ("scientific_name", "broad_scale_environmental_context", "local_environmental_context",
@@ -44,16 +43,6 @@ def kind(identifier: str) -> str:
     return "name"
 
 
-def _search(result: str, fields, query: str) -> list[dict] | None:
-    d = sources._json(f"{ENA_API}/search", _post=True, result=result, format="json", limit=0,
-                      fields=",".join(fields), query=query)
-    return d if d is None else (d if isinstance(d, list) else [])
-
-
-def _either(ids, *keys) -> str:
-    return " OR ".join(f'{k}="{a}"' for a in ids for k in keys)
-
-
 def _keep(value) -> bool:
     return str(value or "").strip().lower() not in EMPTY
 
@@ -66,7 +55,7 @@ def _sample_rows(accessions: list[str], fields: tuple) -> dict[str, dict | None]
     todo = list(dict.fromkeys(a.upper() for a, row in out.items() if row is None))
     for i in range(0, len(todo), BATCH):
         batch = todo[i:i + BATCH]
-        rows = _search("sample", want, _either(batch, "sample_accession", "secondary_sample_accession"))
+        rows = sources.ena_search("sample", want, ("sample_accession", "secondary_sample_accession"), batch)
         if rows is None:
             continue
         by = {str(r.get(k) or "").upper(): r for r in rows for k in ("sample_accession", "secondary_sample_accession")}
@@ -82,8 +71,8 @@ def _run_samples(accessions: list[str]) -> dict[str, list[str] | None]:
     todo = list(dict.fromkeys(a.upper() for a in accessions if a.upper() not in cache.data))
     for i in range(0, len(todo), BATCH):
         batch = todo[i:i + BATCH]
-        rows = _search("read_run", ("run_accession", "experiment_accession", "sample_accession"),
-                       _either(batch, "run_accession", "experiment_accession"))
+        rows = sources.ena_search("read_run", ("run_accession", "experiment_accession", "sample_accession"),
+                                  ("run_accession", "experiment_accession"), batch)
         if rows is None:
             continue
         got: dict[str, list[str]] = {a: [] for a in batch}
@@ -103,8 +92,8 @@ def _studies(accessions: list[str]) -> dict[str, dict | None]:
     todo = list(dict.fromkeys(a.upper() for a in accessions if a.upper() not in cache.data))
     for i in range(0, len(todo), BATCH):
         batch = todo[i:i + BATCH]
-        rows = _search("study", ("study_accession", "secondary_study_accession", "study_title"),
-                       _either(batch, "study_accession", "secondary_study_accession"))
+        rows = sources.ena_search("study", ("study_accession", "secondary_study_accession", "study_title"),
+                                  ("study_accession", "secondary_study_accession"), batch)
         if rows is None:
             continue
         got = {a: {} for a in batch}
@@ -126,7 +115,7 @@ def _studies(accessions: list[str]) -> dict[str, dict | None]:
 def _project_rows(prj: str, fields: tuple) -> list[dict] | None:
     want = ("sample_accession", "secondary_sample_accession", *fields)
     return Cache("resolve_ena_project").get(f"{prj}|{','.join(fields)}",
-                                            lambda: _search("sample", want, f'study_accession="{prj}"'))
+                                            lambda: sources.ena_search("sample", want, ("study_accession",), [prj]))
 
 
 def _record(row: dict, searched: tuple, study: dict | None = None) -> dict:

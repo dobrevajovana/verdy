@@ -27,11 +27,10 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from urllib.parse import quote
 
 from verdy import gold as gold_model
 from verdy import hosts, sources
-from verdy.constants import ECOLOGICAL, OBO, OLS
+from verdy.constants import ECOLOGICAL, OBO
 from verdy.sources import Cache, by_id, counted, query_text, search, singular
 
 HOST, ENGINEERED, ENVIRONMENTAL = "Host-associated", "Engineered", "Environmental"
@@ -68,12 +67,9 @@ def _top(items, key):
 
 def _anthropogenic(ontology_id: str) -> bool | None:
     """Whether ENVO places the class under an anthropogenic one (activated sludge: yes; sea water: no)."""
-    iri = OBO + ontology_id.replace(":", "_")
-
     def fetch():
-        d = sources._json(f"{OLS}/ontologies/envo/terms/{quote(quote(iri, safe=''), safe='')}/hierarchicalAncestors",
-                          size=500)
-        return d if d is None else [t.get("label") or "" for t in (d.get("_embedded") or {}).get("terms") or []]
+        found = sources.ols_ancestors("envo", OBO + ontology_id.replace(":", "_"))
+        return found if found is None else [a["label"] for a in found]
     labels = Cache("envo_ancestors").get(ontology_id, fetch)
     return None if labels is None else any("anthropogenic" in a for a in labels)
 

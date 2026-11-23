@@ -8,16 +8,14 @@ import json
 import re
 from pathlib import Path
 
+from verdy.constants import GOLD_PATH, GOLD_VOCAB, OBO
+
 COLUMNS = ["term_id", "term", "category", "match_type", "ontology", "match_curie", "match_label", "confidence",
            "method", "word_overlap", "cosine", "rank", "match_id", "definition", "searched_for", "why"]
-PREFIXES = {"ENVO": "http://purl.obolibrary.org/obo/ENVO_", "NCBITaxon": "http://purl.obolibrary.org/obo/NCBITaxon_",
-            "PATO": "http://purl.obolibrary.org/obo/PATO_", "OBA": "http://purl.obolibrary.org/obo/OBA_",
-            "UO": "http://purl.obolibrary.org/obo/UO_", "CHEBI": "http://purl.obolibrary.org/obo/CHEBI_",
-            "OBI": "http://purl.obolibrary.org/obo/OBI_", "UBERON": "http://purl.obolibrary.org/obo/UBERON_",
-            "PO": "http://purl.obolibrary.org/obo/PO_", "GO": "http://purl.obolibrary.org/obo/GO_",
+PREFIXES = {**{p: f"{OBO}{p}_" for p in ("ENVO", "NCBITaxon", "PATO", "OBA", "UO", "CHEBI", "OBI", "UBERON", "PO", "GO")},
             "GBIF": "https://www.gbif.org/species/", "wikidata": "http://www.wikidata.org/entity/",
-            "CF": "http://vocab.nerc.ac.uk/standard_name/", "GOLD": "https://w3id.org/gold.vocab/",
-            "GOLD.path": "https://w3id.org/gold.path/", "n2k": "https://w3id.org/verdy/natura2000/"}   # local: Natura 2000 has no URIs of its own
+            "CF": "http://vocab.nerc.ac.uk/standard_name/", "GOLD": GOLD_VOCAB, "GOLD.path": GOLD_PATH,
+            "n2k": "https://w3id.org/verdy/natura2000/"}   # local: Natura 2000 has no URIs of its own
 
 
 def to_table(matches: list[dict], sep: str = ",") -> str:

@@ -15,10 +15,8 @@ names: cow, honey bee, human). Ancestors come unordered; labels lose OLS4's tags
 from __future__ import annotations
 
 import re
-from urllib.parse import quote
 
 from verdy import sources
-from verdy.constants import OLS
 from verdy.sources import Cache, by_id
 
 HOST_FIELDS = ("host_tax_id", "host_scientific_name", "host")
@@ -31,21 +29,16 @@ def _name(label: str) -> str:
 def _ancestors(iri: str) -> list[dict] | None:
     """[{id, label}] of every ancestor, unordered."""
     def fetch():
-        path = quote(quote(iri, safe=""), safe="")          # OLS4 wants the IRI encoded twice
-        d = sources._json(f"{OLS}/ontologies/ncbitaxon/terms/{path}/hierarchicalAncestors", size=500)
-        return d if d is None else [{"id": t.get("obo_id"), "label": _name(t["label"])}
-                                    for t in (d.get("_embedded") or {}).get("terms") or [] if t.get("label")]
+        found = sources.ols_ancestors("ncbitaxon", iri)
+        return found if found is None else [{"id": a["id"], "label": _name(a["label"])} for a in found if a["label"]]
     return Cache("taxon_ancestors").get(iri, fetch)
 
 
 def named(name: str) -> list[str] | None:
     """The NCBITaxon IDs whose label or synonym is ``name``, OLS4's best first ("Fish": three classes)."""
     def fetch():
-        d = sources._json(f"{OLS}/search", q=name, ontology="ncbitaxon", exact="true", queryFields="label,synonym",
-                          rows=10, fieldList="obo_id,label")
-        if d is None:
-            return None
-        return [x["obo_id"] for x in (d.get("response") or {}).get("docs") or [] if x.get("obo_id")]
+        docs = sources.ols_search(name, "ncbitaxon", True, "obo_id,label", queryFields="label,synonym")
+        return docs if docs is None else [x["obo_id"] for x in docs if x.get("obo_id")]
     return Cache("taxon_named").get(name.lower(), fetch)
 
 

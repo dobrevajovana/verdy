@@ -27,7 +27,7 @@ from __future__ import annotations
 import threading
 
 from verdy import hosts, sources
-from verdy.constants import OLS
+from verdy.constants import GOLD_PATH
 from verdy.sources import Cache, by_id, canon, counted, score
 
 LINKS = ("env_broad", "env_local", "env_medium", "anatomical_site", "has exact match", "has close match")
@@ -41,16 +41,9 @@ _lock = threading.Lock()
 def _terms() -> list[dict]:
     """Every GOLD class in OLS4, 500 to a request."""
     def fetch():
-        out, page = [], 0
-        while True:
-            d = sources._json(f"{OLS}/ontologies/gold/terms", size=500, page=page)
-            if d is None:
-                return None
-            out += [{"iri": t["iri"], "label": t.get("label") or "", "annotation": t.get("annotation") or {}}
-                    for t in (d.get("_embedded") or {}).get("terms") or []]
-            page += 1
-            if page >= ((d.get("page") or {}).get("totalPages") or 0):
-                return out
+        found = sources.ols_all_terms("gold")
+        return found if found is None else [{"iri": t["iri"], "label": t.get("label") or "",
+                                             "annotation": t.get("annotation") or {}} for t in found]
     terms = Cache("gold").get("terms", fetch)
     if terms is None:
         raise RuntimeError("OLS4 did not answer for GOLD; try again later.")
@@ -65,7 +58,7 @@ class Gold:
     def __init__(self, terms: list[dict], workers: int = 6, progress=None):
         self.paths = []
         for t in terms:
-            if "/gold.path/" not in t["iri"]:
+            if not t["iri"].startswith(GOLD_PATH):
                 continue
             levels = [x.strip() for x in t["label"].split(">")]
             ann = t["annotation"]

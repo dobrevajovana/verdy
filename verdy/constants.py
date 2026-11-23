@@ -17,6 +17,10 @@ EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
 # An OBO class's IRI: ENVO:00002046 is OBO + "ENVO_00002046"
 OBO = "http://purl.obolibrary.org/obo/"
+# GOLD's IRIs: a whole path (GOLD_PATH + "4254" is Engineered > Wastewater > Activated Sludge), or one level's
+# name on its own (GOLD_VOCAB + "Activated-Sludge")
+GOLD_PATH = "https://w3id.org/gold.path/"
+GOLD_VOCAB = "https://w3id.org/gold.vocab/"
 
 # Ontology classes used by ID
 ECOLOGICAL = "NCBITaxon:410657"     # ecological metagenomes (soil, seawater, air); organismal ones are 410656
