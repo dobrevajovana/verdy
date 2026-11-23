@@ -1,4 +1,4 @@
-"""Embedding similarity: names and candidate terms embedded with SentenceTransformers and
+"""Embedding similarity: terms and their candidates embedded with SentenceTransformers and
 compared by cosine similarity (as in VERDANT's vector-matching step).
 
 Optional: ``pip install "verdy[embeddings]"``. Without it VERDY matches on words alone.
@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import os
 
-MODEL = os.environ.get("VERDY_EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+from verdy.constants import EMBEDDING_MODEL
+
+MODEL = os.environ.get("VERDY_EMBEDDING_MODEL", EMBEDDING_MODEL)
 MIN_COSINE = 0.60     # least cosine for a match kept on embedding similarity (match(min_cosine=...))
 CLOSE = 0.80          # cosine for a closeMatch
 
@@ -32,13 +34,13 @@ def encode(texts: list[str], model: str = MODEL):
     return _models[model].encode(texts, batch_size=64, normalize_embeddings=True, show_progress_bar=False)
 
 
-def candidate_text(hit: dict) -> str:
+def candidate_text(candidate: dict) -> str:
     """A candidate as text: its label, up to five synonyms and the start of its definition."""
-    parts = [hit.get("label") or ""]
-    if hit.get("synonyms"):
-        parts.append("also called " + ", ".join(hit["synonyms"][:5]))
-    if hit.get("definition"):
-        parts.append(str(hit["definition"])[:300])
+    parts = [candidate.get("label") or ""]
+    if candidate.get("synonyms"):
+        parts.append("also called " + ", ".join(candidate["synonyms"][:5]))
+    if candidate.get("definition"):
+        parts.append(str(candidate["definition"])[:300])
     return ". ".join(p for p in parts if p)
 
 

@@ -8,16 +8,14 @@ import json
 import re
 from pathlib import Path
 
+from verdy.constants import GOLD_PATH, GOLD_VOCAB, OBO
+
 COLUMNS = ["term_id", "term", "category", "match_type", "ontology", "match_curie", "match_label", "confidence",
-           "word_overlap", "cosine", "rank", "match_id", "definition", "searched_for"]
-PREFIXES = {"ENVO": "http://purl.obolibrary.org/obo/ENVO_", "NCBITaxon": "http://purl.obolibrary.org/obo/NCBITaxon_",
-            "PATO": "http://purl.obolibrary.org/obo/PATO_", "OBA": "http://purl.obolibrary.org/obo/OBA_",
-            "UO": "http://purl.obolibrary.org/obo/UO_", "CHEBI": "http://purl.obolibrary.org/obo/CHEBI_",
-            "OBI": "http://purl.obolibrary.org/obo/OBI_", "UBERON": "http://purl.obolibrary.org/obo/UBERON_",
-            "PO": "http://purl.obolibrary.org/obo/PO_", "GO": "http://purl.obolibrary.org/obo/GO_",
+           "method", "word_overlap", "cosine", "rank", "match_id", "definition", "searched_for", "why"]
+PREFIXES = {**{p: f"{OBO}{p}_" for p in ("ENVO", "NCBITaxon", "PATO", "OBA", "UO", "CHEBI", "OBI", "UBERON", "PO", "GO")},
             "GBIF": "https://www.gbif.org/species/", "wikidata": "http://www.wikidata.org/entity/",
-            "CF": "http://vocab.nerc.ac.uk/standard_name/", "GOLD": "https://w3id.org/gold.vocab/",
-            "GOLD.path": "https://w3id.org/gold.path/", "n2k": "https://w3id.org/verdy/natura2000/"}   # local: Natura 2000 has no URIs of its own
+            "CF": "http://vocab.nerc.ac.uk/standard_name/", "GOLD": GOLD_VOCAB, "GOLD.path": GOLD_PATH,
+            "n2k": "https://w3id.org/verdy/natura2000/"}   # local: Natura 2000 has no URIs of its own
 
 
 def to_table(matches: list[dict], sep: str = ",") -> str:
@@ -29,8 +27,8 @@ def to_table(matches: list[dict], sep: str = ",") -> str:
 
 
 def _subject(term_id: str) -> str:
-    """Your ID as a CURIE: ENA accessions with their registry prefix, other IDs as they are,
-    free text under term:."""
+    """The term_id with a prefix, for SSSOM: ENA IDs with their registry's, prefixed IDs as they
+    are, free text under term:."""
     t = str(term_id)
     if re.match(r"^SAM[NED][A-Z]?\d+$", t):
         return "biosample:" + t
@@ -67,6 +65,61 @@ def to_sssom(matches: list[dict], name: str = "matches") -> str:
                     "comment": f"word overlap {m['word_overlap']}"
                                + (f"; cosine {m['cosine']}" if m.get("cosine") is not None else "") + f"; rank {m['rank']}"})
     return buf.getvalue()
+
+
+SAMPLE_COLUMNS = ["sample", "input", "study", "study_title", "host", "evidence", "status"]
+PER_ONTOLOGY = ["id", "label", "match_type", "confidence", "method", "why"]
+
+
+def sample_rows(samples: list[dict]) -> list[dict]:
+    """``verdy.match.samples`` as flat rows: the sample, then ``<ontology>_id``, ``_label``, ``_match_type``,
+    ``_confidence``, ``_method`` and ``_why`` for each chosen ontology, side by side. ``status`` names the
+    ontologies the sample got no match in."""
+    rows = []
+    for s in samples:
+        row = {k: s.get(k) or "" for k in SAMPLE_COLUMNS}
+        missing = [o for o, m in s["matches"].items() if not m]
+        row["status"] = "matched" if not missing else "no match" if len(missing) == len(s["matches"]) \
+            else "no match in " + ", ".join(missing)
+        for o, m in s["matches"].items():
+            m = m or {}
+            row.update({f"{o}_id": m.get("match_curie") or "", f"{o}_label": m.get("match_label") or "",
+                        f"{o}_match_type": m.get("match_type") or "",
+                        f"{o}_confidence": "" if m.get("confidence") is None else m["confidence"],
+                        f"{o}_method": m.get("method") or "", f"{o}_why": m.get("why") or ""})
+        rows.append(row)
+    return rows
+
+
+def to_sample_table(samples: list[dict], sep: str = ",") -> str:
+    rows = sample_rows(samples)
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=list(rows[0]) if rows else SAMPLE_COLUMNS, delimiter=sep, lineterminator="\n")
+    w.writeheader()
+    w.writerows(rows)
+    return buf.getvalue()
+
+
+def save_samples(samples: list[dict], path) -> Path:
+    """One row per sample, by the extension: .csv, .tsv, .json (or .xlsx with pandas)."""
+    path = Path(path)
+    if path.suffix.lower() == ".json":
+        path.write_text(json.dumps(samples, indent=1, ensure_ascii=False), encoding="utf-8")
+    elif path.suffix.lower() == ".xlsx":
+        import pandas as pd
+        pd.DataFrame(sample_rows(samples)).to_excel(path, index=False)
+    else:
+        path.write_text(to_sample_table(samples, "\t" if path.suffix.lower() == ".tsv" else ","), encoding="utf-8")
+    return path
+
+
+def samples_path(path) -> Path:
+    """Where the per-sample file goes beside a matches file: results.csv -> results.samples.csv
+    (an SSSOM file's samples go to a .tsv)."""
+    path = Path(path)
+    if path.name.endswith(".sssom.tsv"):
+        return path.with_name(path.name[: -len(".sssom.tsv")] + ".samples.tsv")
+    return path.with_name(path.stem + ".samples" + path.suffix)
 
 
 def to_dataframe(matches: list[dict]):

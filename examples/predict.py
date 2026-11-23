@@ -15,11 +15,12 @@ import verdy
 HERE = Path(__file__).resolve().parent
 ONTOLOGIES = ["natura2000", "gold", "envo", "ncbitaxon", "pato", "cf"]
 
-matches = verdy.match(HERE / "input.csv", ONTOLOGIES, per_ontology=2,
-                        progress=lambda done, total: print(f"\r{done} of {total} lookups", end=""))
-print()
+bar = verdy.ProgressBar()
+matches = verdy.match(HERE / "input.csv", ONTOLOGIES, per_ontology=2, progress=bar)
+bar.close()
 verdy.save(matches, HERE / "input.matches.csv")
 verdy.save(matches, HERE / "input.matches.sssom.tsv")
+verdy.save_samples(verdy.match.samples, HERE / "input.samples.csv")
 
 print(f"{len(matches)} matches -> examples/input.matches.csv")
 for m in matches:

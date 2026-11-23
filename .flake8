@@ -1,0 +1,6 @@
+[flake8]
+max-line-length = 120
+max-complexity = 15
+# E203 and W503 disagree with black's formatting; E731 (a lambda assigned to a name) is used on purpose.
+extend-ignore = E203, W503, E731
+exclude = .git, __pycache__, build, dist, .venv
